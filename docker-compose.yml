@@ -1,0 +1,76 @@
+# ============================================================================
+# CivicFix AI - full stack: MongoDB + Express API + React (nginx) frontend
+#   docker compose up --build
+#   Frontend : http://localhost:8080
+#   API      : http://localhost:5000/api/health
+# ============================================================================
+services:
+  mongo:
+    image: mongo:7
+    container_name: civicfix-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-changeme123}
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+    networks:
+      - civicfix
+
+  api:
+    build:
+      context: ./backend
+    container_name: civicfix-api
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-changeme123}@mongo:27017/civicfix?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:-change-this-to-a-long-random-string}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      # Optional: point at any OpenAI-compatible provider.
+      #   Host Ollama : http://host.docker.internal:11434/v1
+      #   Gemini      : https://generativelanguage.googleapis.com/v1beta/openai/
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      ADMIN_NAME: ${ADMIN_NAME:-CivicFix Administrator}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@civicfix.ai}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@12345}
+      CORS_ORIGIN: http://localhost:${WEB_PORT:-8080}
+      # Creates/updates the administrator account at container start.
+      SEED_ADMIN_ON_START: "true"
+    ports:
+      - "${API_PORT:-5000}:5000"
+    networks:
+      - civicfix
+
+  web:
+    build:
+      context: ./frontend
+    container_name: civicfix-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    networks:
+      - civicfix
+
+volumes:
+  mongo-data:
+
+networks:
+  civicfix:
+    driver: bridge
